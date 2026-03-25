@@ -1,2 +1,2 @@
 # job-tracker
-Project for app dedicated to job apps 
+Project for app dedicated to job apps   
