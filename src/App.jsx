@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from "react";
 
-// Supabase config
 const SUPABASE_URL = "https://yoerfdvvtokunrmcjfri.supabase.co";
 const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlvZXJmZHZ2dG9rdW5ybWNqZnJpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0MjYyMTIsImV4cCI6MjA5MDAwMjIxMn0.KxqXBqctZUFTrwLmU7QvAfaRzUAabz7ZMSqovgbKcms";
 const HEADERS = {
@@ -39,12 +38,12 @@ async function dbDelete(id) {
 }
 
 const STATUS = {
-  applied:           { label: "Applied",           color: "#2563eb", bg: "#eff6ff", border: "#bfdbfe" },
-  recruiter_session: { label: "Recruiter Session", color: "#7c3aed", bg: "#f5f3ff", border: "#ddd6fe" },
-  interview:         { label: "Interview",          color: "#d97706", bg: "#fffbeb", border: "#fde68a" },
-  offer:             { label: "Offer",              color: "#059669", bg: "#ecfdf5", border: "#a7f3d0" },
-  rejected:          { label: "Rejected",           color: "#dc2626", bg: "#fef2f2", border: "#fecaca" },
-  ghosted:           { label: "Ghosted",            color: "#6b7280", bg: "#f9fafb", border: "#e5e7eb" },
+  applied:           { label: "Applied",           color: "#c2410c", bg: "#fff7ed", border: "#fed7aa" },
+  recruiter_session: { label: "Recruiter Session", color: "#9a3412", bg: "#ffedd5", border: "#fb923c" },
+  interview:         { label: "Interview",          color: "#b45309", bg: "#fffbeb", border: "#fcd34d" },
+  offer:             { label: "Offer",              color: "#15803d", bg: "#f0fdf4", border: "#86efac" },
+  rejected:          { label: "Rejected",           color: "#9ca3af", bg: "#f9fafb", border: "#e5e7eb" },
+  ghosted:           { label: "Ghosted",            color: "#6b7280", bg: "#f3f4f6", border: "#d1d5db" },
 };
 
 const EMPTY = {
@@ -79,6 +78,7 @@ export default function JobTracker() {
   const [quickText, setQuickText] = useState("");
   const [parsing, setParsing] = useState(false);
   const [toast, setToast] = useState(null);
+  const [sortBy, setSortBy] = useState("date");
   const inputRef = useRef();
 
   useEffect(() => {
@@ -149,33 +149,43 @@ export default function JobTracker() {
     setExpandedId(null);
   };
 
-  const filtered = apps
+  // Sort logic: rejected always at bottom, then by chosen sort
+  const sorted = [...apps]
     .filter((a) => filter === "all" || a.status === filter)
     .filter((a) =>
       a.company.toLowerCase().includes(search.toLowerCase()) ||
       (a.role || "").toLowerCase().includes(search.toLowerCase())
-    );
+    )
+    .sort((a, b) => {
+      const aRej = a.status === "rejected" ? 1 : 0;
+      const bRej = b.status === "rejected" ? 1 : 0;
+      if (aRej !== bRej) return aRej - bRej;
+      if (sortBy === "az") return a.company.localeCompare(b.company);
+      return new Date(b.date) - new Date(a.date);
+    });
 
   const counts = Object.fromEntries(Object.keys(STATUS).map((s) => [s, apps.filter((a) => a.status === s).length]));
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f8fafc", color: "#1e293b", fontFamily: "'Outfit', sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: "#f4f4f0", color: "#1c1c1c", fontFamily: "'Outfit', sans-serif" }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Lora:wght@600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Playfair+Display:wght@700;800&display=swap');
         *{box-sizing:border-box;margin:0;padding:0;}
-        ::-webkit-scrollbar{width:5px}
-        ::-webkit-scrollbar-track{background:#f1f5f9}
-        ::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:3px}
+        ::-webkit-scrollbar{width:4px}
+        ::-webkit-scrollbar-track{background:#eeede8}
+        ::-webkit-scrollbar-thumb{background:#d1cfc8;border-radius:2px}
         input,textarea,select{font-family:inherit;}
-        .fi{border:1.5px solid #e2e8f0;background:#fff;color:#1e293b;padding:9px 13px;border-radius:8px;width:100%;outline:none;font-size:13.5px;transition:border-color .15s,box-shadow .15s;}
-        .fi:focus{border-color:#6366f1;box-shadow:0 0 0 3px rgba(99,102,241,0.1);}
-        .row{transition:background .15s,box-shadow .15s;cursor:pointer;border-radius:10px;margin-bottom:6px;}
-        .row:hover{background:#fff;box-shadow:0 2px 12px rgba(0,0,0,0.07);}
+        .fi{border:1.5px solid #e2dfd8;background:#fff;color:#1c1c1c;padding:9px 13px;border-radius:8px;width:100%;outline:none;font-size:13.5px;transition:border-color .15s,box-shadow .15s;}
+        .fi:focus{border-color:#ea6c1a;box-shadow:0 0 0 3px rgba(234,108,26,0.1);}
+        .row{transition:all .15s;cursor:pointer;border-radius:10px;margin-bottom:5px;border:1.5px solid transparent;}
+        .row:hover{background:#fff;border-color:#e8e4dc;box-shadow:0 2px 14px rgba(0,0,0,0.06);}
         .btn{cursor:pointer;border:none;transition:all .15s;font-family:inherit;}
-        .btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,0.1);}
+        .btn:hover{transform:translateY(-1px);}
         .chip{cursor:pointer;transition:all .15s;user-select:none;}
         .chip:hover{transform:translateY(-1px);}
-        @keyframes fadeSlide{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
+        .sort-btn{cursor:pointer;border:none;font-family:inherit;transition:all .15s;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;}
+        .sort-btn:hover{background:#efe8de;}
+        @keyframes fadeSlide{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
         .fade{animation:fadeSlide .2s ease;}
         @keyframes spin{to{transform:rotate(360deg)}}
         .spin{animation:spin .8s linear infinite;display:inline-block;}
@@ -185,26 +195,39 @@ export default function JobTracker() {
         .toast{animation:toastIn .25s ease;}
       `}</style>
 
-      {/* Header */}
-      <div style={{ background: "#fff", borderBottom: "1.5px solid #e2e8f0", padding: "0 32px", display: "flex", alignItems: "center", justifyContent: "space-between", height: 72 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <div style={{ width: 38, height: 38, background: "linear-gradient(135deg, #6366f1, #8b5cf6)", borderRadius: 11, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>&#127919;</div>
-          <div>
-            <div style={{ fontFamily: "'Lora', serif", fontSize: 21, fontWeight: 700, color: "#0f172a", letterSpacing: "-0.3px", lineHeight: 1.2 }}>Opportunity Board</div>
-            <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 400, letterSpacing: ".01em" }}>
-              created by Lukasz Latka &nbsp;&middot;&nbsp; <span style={{ color: loading ? "#f59e0b" : "#10b981", fontWeight: 500 }}>{loading ? "connecting..." : "live"}</span>
-            </div>
+      {/* Banner image */}
+      <div style={{ width: "100%", background: "#1e1b4b", overflow: "hidden", maxHeight: 90, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <img
+          src="/IMG_3385.jpeg"
+          alt="Job Search App - Opportunity Board by Lukasz Latka"
+          style={{ width: "100%", maxWidth: 1200, objectFit: "cover", display: "block" }}
+          onError={(e) => {
+            e.target.style.display = "none";
+            e.target.parentElement.style.background = "linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #1e3a5f 100%)";
+            e.target.parentElement.style.padding = "18px 32px";
+            e.target.parentElement.innerHTML = "<div style=\"display:flex;align-items:center;gap:14px\"><div style=\"width:42px;height:42px;background:rgba(255,255,255,0.15);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px\">&#127919;</div><div><div style=\"font-family:Georgia,serif;font-size:22px;font-weight:800;color:#fff;letter-spacing:-0.5px\">JOB <span style='color:#93c5fd'>SEARCH APP</span></div><div style=\"font-size:13px;color:#a5b4fc;font-style:italic;margin-top:1px\">Opportunity Board by Lukasz Latka</div></div></div>";
+          }}
+        />
+      </div>
+
+      {/* Sub-header */}
+      <div style={{ background: "#fff", borderBottom: "1.5px solid #e8e4dc", padding: "0 32px", display: "flex", alignItems: "center", justifyContent: "space-between", height: 56 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ fontSize: 11, color: loading ? "#ea6c1a" : "#16a34a", fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase" }}>
+            {loading ? "Connecting..." : "Live"}
           </div>
+          <div style={{ width: 5, height: 5, borderRadius: "50%", background: loading ? "#ea6c1a" : "#16a34a" }}/>
+          <div style={{ fontSize: 12, color: "#9ca3af" }}>{apps.length} application{apps.length !== 1 ? "s" : ""}</div>
         </div>
         <button className="btn" onClick={() => { setShowForm(true); setForm(EMPTY); setEditId(null); }}
-          style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", color: "#fff", padding: "9px 20px", borderRadius: 9, fontSize: 13.5, fontWeight: 600, letterSpacing: ".01em", boxShadow: "0 2px 8px rgba(99,102,241,0.3)" }}>
+          style={{ background: "#ea6c1a", color: "#fff", padding: "8px 20px", borderRadius: 8, fontSize: 13.5, fontWeight: 600, boxShadow: "0 2px 8px rgba(234,108,26,0.3)" }}>
           + New Application
         </button>
       </div>
 
       {/* Quick-add */}
-      <div style={{ background: "linear-gradient(135deg, #eef2ff, #f5f3ff)", borderBottom: "1.5px solid #e0e7ff", padding: "16px 32px" }}>
-        <div style={{ fontSize: 11, color: "#6366f1", marginBottom: 8, letterSpacing: ".1em", textTransform: "uppercase", fontWeight: 600 }}>
+      <div style={{ background: "#fef6ee", borderBottom: "1.5px solid #fde8d0", padding: "14px 32px" }}>
+        <div style={{ fontSize: 10, color: "#ea6c1a", marginBottom: 7, letterSpacing: ".12em", textTransform: "uppercase", fontWeight: 700 }}>
           Quick Add
         </div>
         <div style={{ display: "flex", gap: 8 }}>
@@ -219,83 +242,98 @@ export default function JobTracker() {
             style={{ resize: "none", flex: 1, background: "rgba(255,255,255,0.8)" }}
           />
           <button className="btn" onClick={handleQuickAdd} disabled={parsing}
-            style={{ padding: "0 22px", background: parsing ? "#e0e7ff" : "linear-gradient(135deg, #6366f1, #8b5cf6)", color: parsing ? "#6366f1" : "#fff", borderRadius: 9, fontSize: 13.5, fontWeight: 600, minWidth: 90, alignSelf: "stretch", boxShadow: parsing ? "none" : "0 2px 8px rgba(99,102,241,0.25)" }}>
+            style={{ padding: "0 22px", background: parsing ? "#fde8d0" : "#ea6c1a", color: parsing ? "#ea6c1a" : "#fff", borderRadius: 8, fontSize: 13.5, fontWeight: 600, minWidth: 90, alignSelf: "stretch", boxShadow: parsing ? "none" : "0 2px 8px rgba(234,108,26,0.25)" }}>
             {parsing ? <span className="spin">...</span> : "Add"}
           </button>
         </div>
-        <div style={{ fontSize: 11.5, color: "#818cf8", marginTop: 7 }}>AI extracts company, role, date and links automatically. Press Enter to submit.</div>
+        <div style={{ fontSize: 11.5, color: "#f59e50", marginTop: 6 }}>AI extracts company, role, date and links. Press Enter to submit.</div>
       </div>
 
-      {/* Filters */}
-      <div style={{ padding: "14px 32px", display: "flex", gap: 7, flexWrap: "wrap", background: "#fff", borderBottom: "1.5px solid #e2e8f0" }}>
-        <div className="chip" onClick={() => setFilter("all")}
-          style={{ padding: "5px 13px", borderRadius: 20, fontSize: 12.5, fontWeight: 500, background: filter === "all" ? "#0f172a" : "#f1f5f9", color: filter === "all" ? "#fff" : "#64748b", border: "1.5px solid " + (filter === "all" ? "#0f172a" : "#e2e8f0") }}>
-          All ({apps.length})
-        </div>
-        {Object.entries(STATUS).map(([key, cfg]) => (
-          <div key={key} className="chip" onClick={() => setFilter(key)}
-            style={{ padding: "5px 13px", borderRadius: 20, fontSize: 12.5, fontWeight: 500, background: filter === key ? cfg.bg : "#f8fafc", color: filter === key ? cfg.color : "#94a3b8", border: "1.5px solid " + (filter === key ? cfg.border : "#e2e8f0") }}>
-            {cfg.label}{counts[key] > 0 ? " (" + counts[key] + ")" : ""}
+      {/* Filters + Sort */}
+      <div style={{ padding: "12px 32px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, background: "#fff", borderBottom: "1.5px solid #e8e4dc" }}>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <div className="chip" onClick={() => setFilter("all")}
+            style={{ padding: "4px 12px", borderRadius: 20, fontSize: 12.5, fontWeight: 600, background: filter === "all" ? "#1c1c1c" : "#f4f4f0", color: filter === "all" ? "#fff" : "#6b7280", border: "1.5px solid " + (filter === "all" ? "#1c1c1c" : "#e8e4dc") }}>
+            All ({apps.length})
           </div>
-        ))}
+          {Object.entries(STATUS).map(([key, cfg]) => (
+            <div key={key} className="chip" onClick={() => setFilter(key)}
+              style={{ padding: "4px 12px", borderRadius: 20, fontSize: 12.5, fontWeight: 600, background: filter === key ? cfg.bg : "#f4f4f0", color: filter === key ? cfg.color : "#9ca3af", border: "1.5px solid " + (filter === key ? cfg.border : "#e8e4dc") }}>
+              {cfg.label}{counts[key] > 0 ? " (" + counts[key] + ")" : ""}
+            </div>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+          <span style={{ fontSize: 11, color: "#9ca3af", marginRight: 4, fontWeight: 500 }}>Sort:</span>
+          <button className="sort-btn" onClick={() => setSortBy("date")}
+            style={{ background: sortBy === "date" ? "#fde8d0" : "transparent", color: sortBy === "date" ? "#ea6c1a" : "#6b7280" }}>
+            Date
+          </button>
+          <button className="sort-btn" onClick={() => setSortBy("az")}
+            style={{ background: sortBy === "az" ? "#fde8d0" : "transparent", color: sortBy === "az" ? "#ea6c1a" : "#6b7280" }}>
+            A to Z
+          </button>
+        </div>
       </div>
 
       {/* Search */}
-      <div style={{ padding: "12px 32px", background: "#fff", borderBottom: "1.5px solid #f1f5f9" }}>
+      <div style={{ padding: "10px 32px", background: "#fff", borderBottom: "1.5px solid #f0ede8" }}>
         <div style={{ position: "relative", maxWidth: 340 }}>
-          <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#94a3b8", fontSize: 14 }}>&#128269;</span>
-          <input className="fi" placeholder="Search company or role..." value={search} onChange={(e) => setSearch(e.target.value)} style={{ paddingLeft: 34 }} />
+          <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#c4bfb8", fontSize: 14 }}>&#128269;</span>
+          <input className="fi" placeholder="Search company or role..." value={search} onChange={(e) => setSearch(e.target.value)} style={{ paddingLeft: 34, background: "#f9f8f6" }} />
         </div>
       </div>
 
       {/* List */}
       <div style={{ padding: "16px 32px 48px" }}>
         {loading && (
-          <div className="pulse" style={{ textAlign: "center", padding: "56px 0", color: "#94a3b8", fontSize: 14 }}>Loading from database...</div>
+          <div className="pulse" style={{ textAlign: "center", padding: "56px 0", color: "#c4bfb8", fontSize: 14 }}>Loading from database...</div>
         )}
-        {!loading && filtered.length === 0 && (
+        {!loading && sorted.length === 0 && (
           <div style={{ textAlign: "center", padding: "64px 0" }}>
-            <div style={{ fontSize: 40, marginBottom: 12 }}>&#128203;</div>
-            <div style={{ color: "#94a3b8", fontSize: 14 }}>{apps.length === 0 ? "No applications yet - use Quick Add above!" : "Nothing matches your filter."}</div>
+            <div style={{ fontSize: 38, marginBottom: 12 }}>&#128203;</div>
+            <div style={{ color: "#9ca3af", fontSize: 14 }}>{apps.length === 0 ? "No applications yet - use Quick Add above!" : "Nothing matches."}</div>
           </div>
         )}
-        {filtered.map((app) => {
+        {sorted.map((app) => {
           const cfg = STATUS[app.status] || STATUS.applied;
           const isOpen = expandedId === app.id;
+          const isRejected = app.status === "rejected";
           return (
-            <div key={app.id} className="row" style={{ background: isOpen ? "#fff" : "transparent", boxShadow: isOpen ? "0 2px 16px rgba(0,0,0,0.08)" : "none", padding: "0 16px", border: isOpen ? "1.5px solid #e2e8f0" : "1.5px solid transparent" }}>
+            <div key={app.id} className="row"
+              style={{ background: isOpen ? "#fff" : (isRejected ? "#fafaf9" : "transparent"), boxShadow: isOpen ? "0 2px 16px rgba(0,0,0,0.07)" : "none", padding: "0 16px", opacity: isRejected ? 0.6 : 1 }}>
               <div onClick={() => setExpandedId(isOpen ? null : app.id)}
-                style={{ display: "grid", gridTemplateColumns: "1fr auto auto auto auto", alignItems: "center", gap: 12, padding: "14px 0" }}>
+                style={{ display: "grid", gridTemplateColumns: "1fr auto auto auto auto", alignItems: "center", gap: 12, padding: "13px 0" }}>
                 <div>
-                  <div style={{ fontSize: 15, fontWeight: 600, color: "#0f172a" }}>{app.company}</div>
-                  {app.role && <div style={{ fontSize: 12.5, color: "#94a3b8", marginTop: 2, fontWeight: 400 }}>{app.role}</div>}
+                  <div style={{ fontSize: 14.5, fontWeight: 600, color: isRejected ? "#9ca3af" : "#1c1c1c" }}>{app.company}</div>
+                  {app.role && <div style={{ fontSize: 12.5, color: "#9ca3af", marginTop: 2 }}>{app.role}</div>}
                 </div>
                 <div style={{ display: "flex", gap: 5 }}>
-                  <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: app.cvSent ? "#ecfdf5" : "#f8fafc", color: app.cvSent ? "#059669" : "#cbd5e1", fontWeight: 600, border: "1px solid " + (app.cvSent ? "#a7f3d0" : "#e2e8f0") }}>CV</span>
-                  <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: app.coverLetterSent ? "#ecfdf5" : "#f8fafc", color: app.coverLetterSent ? "#059669" : "#cbd5e1", fontWeight: 600, border: "1px solid " + (app.coverLetterSent ? "#a7f3d0" : "#e2e8f0") }}>CL</span>
+                  <span style={{ fontSize: 10.5, padding: "2px 7px", borderRadius: 4, background: app.cvSent ? "#f0fdf4" : "#f4f4f0", color: app.cvSent ? "#16a34a" : "#d1d5db", fontWeight: 700, border: "1px solid " + (app.cvSent ? "#86efac" : "#e8e4dc") }}>CV</span>
+                  <span style={{ fontSize: 10.5, padding: "2px 7px", borderRadius: 4, background: app.coverLetterSent ? "#f0fdf4" : "#f4f4f0", color: app.coverLetterSent ? "#16a34a" : "#d1d5db", fontWeight: 700, border: "1px solid " + (app.coverLetterSent ? "#86efac" : "#e8e4dc") }}>CL</span>
                 </div>
-                <div style={{ fontSize: 12, color: "#94a3b8", minWidth: 86, textAlign: "right" }}>{app.date}</div>
-                <div style={{ padding: "4px 11px", borderRadius: 20, background: cfg.bg, color: cfg.color, fontSize: 11.5, fontWeight: 600, textAlign: "center", minWidth: 100, whiteSpace: "nowrap", border: "1.5px solid " + cfg.border }}>{cfg.label}</div>
-                <div style={{ color: "#cbd5e1", fontSize: 11, transform: isOpen ? "rotate(90deg)" : "none", transition: "transform .2s" }}>&#9654;</div>
+                <div style={{ fontSize: 12, color: "#c4bfb8", minWidth: 86, textAlign: "right" }}>{app.date}</div>
+                <div style={{ padding: "4px 11px", borderRadius: 20, background: cfg.bg, color: cfg.color, fontSize: 11.5, fontWeight: 700, textAlign: "center", minWidth: 100, whiteSpace: "nowrap", border: "1.5px solid " + cfg.border }}>{cfg.label}</div>
+                <div style={{ color: "#d1cfc8", fontSize: 11, transform: isOpen ? "rotate(90deg)" : "none", transition: "transform .2s" }}>&#9654;</div>
               </div>
 
               {isOpen && (
-                <div className="fade" style={{ paddingBottom: 16, borderTop: "1px solid #f1f5f9", paddingTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+                <div className="fade" style={{ paddingBottom: 16, borderTop: "1px solid #f0ede8", paddingTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
                   {(app.cvLink || app.coverLetterLink) && (
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      {app.cvLink && <a href={app.cvLink} target="_blank" rel="noreferrer" style={{ fontSize: 13, color: "#6366f1", background: "#eef2ff", padding: "6px 14px", borderRadius: 7, textDecoration: "none", fontWeight: 500, border: "1px solid #e0e7ff" }}>CV Document &#8599;</a>}
-                      {app.coverLetterLink && <a href={app.coverLetterLink} target="_blank" rel="noreferrer" style={{ fontSize: 13, color: "#7c3aed", background: "#f5f3ff", padding: "6px 14px", borderRadius: 7, textDecoration: "none", fontWeight: 500, border: "1px solid #ede9fe" }}>Cover Letter &#8599;</a>}
+                      {app.cvLink && <a href={app.cvLink} target="_blank" rel="noreferrer" style={{ fontSize: 13, color: "#ea6c1a", background: "#fef6ee", padding: "6px 14px", borderRadius: 7, textDecoration: "none", fontWeight: 600, border: "1px solid #fde8d0" }}>CV Document &#8599;</a>}
+                      {app.coverLetterLink && <a href={app.coverLetterLink} target="_blank" rel="noreferrer" style={{ fontSize: 13, color: "#c2410c", background: "#fff7ed", padding: "6px 14px", borderRadius: 7, textDecoration: "none", fontWeight: 600, border: "1px solid #fed7aa" }}>Cover Letter &#8599;</a>}
                     </div>
                   )}
                   {app.notes && (
-                    <div style={{ background: "#f8fafc", border: "1.5px solid #e2e8f0", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#475569", lineHeight: 1.65 }}>
-                      <div style={{ fontSize: 10.5, color: "#94a3b8", marginBottom: 5, textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 600 }}>Notes</div>
+                    <div style={{ background: "#f9f8f6", border: "1.5px solid #e8e4dc", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#6b7280", lineHeight: 1.65 }}>
+                      <div style={{ fontSize: 10.5, color: "#c4bfb8", marginBottom: 5, textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 700 }}>Notes</div>
                       {app.notes}
                     </div>
                   )}
                   <div style={{ display: "flex", gap: 8 }}>
-                    <button className="btn" onClick={() => startEdit(app)} style={{ padding: "7px 16px", background: "#eef2ff", color: "#6366f1", borderRadius: 7, fontSize: 13, fontWeight: 600 }}>Edit</button>
-                    <button className="btn" onClick={() => deleteApp(app.id)} style={{ padding: "7px 16px", background: "#fef2f2", color: "#dc2626", borderRadius: 7, fontSize: 13, fontWeight: 600 }}>Delete</button>
+                    <button className="btn" onClick={() => startEdit(app)} style={{ padding: "7px 16px", background: "#fef6ee", color: "#ea6c1a", borderRadius: 7, fontSize: 13, fontWeight: 600, border: "1px solid #fde8d0" }}>Edit</button>
+                    <button className="btn" onClick={() => deleteApp(app.id)} style={{ padding: "7px 16px", background: "#fef2f2", color: "#dc2626", borderRadius: 7, fontSize: 13, fontWeight: 600, border: "1px solid #fecaca" }}>Delete</button>
                   </div>
                 </div>
               )}
@@ -307,14 +345,14 @@ export default function JobTracker() {
       {/* Modal */}
       {showForm && (
         <div onClick={(e) => { if (e.target === e.currentTarget) { setShowForm(false); setEditId(null); } }}
-          style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 16, backdropFilter: "blur(4px)" }}>
-          <div className="fade" style={{ background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 14, padding: 28, width: "100%", maxWidth: 500, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.15)" }}>
-            <div style={{ fontFamily: "'Lora', serif", fontSize: 22, fontWeight: 700, color: "#0f172a", marginBottom: 20 }}>
+          style={{ position: "fixed", inset: 0, background: "rgba(28,28,28,0.35)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 16, backdropFilter: "blur(4px)" }}>
+          <div className="fade" style={{ background: "#fff", border: "1.5px solid #e8e4dc", borderRadius: 14, padding: 28, width: "100%", maxWidth: 500, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.12)" }}>
+            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 22, fontWeight: 800, color: "#1c1c1c", marginBottom: 20 }}>
               {editId ? "Edit Application" : "New Application"}
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <Field label="Company *"><input className="fi" placeholder="e.g. Google" value={form.company} onChange={(e) => setForm((f) => ({ ...f, company: e.target.value }))}/></Field>
-              <Field label="Role"><input className="fi" placeholder="e.g. Product Designer" value={form.role} onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}/></Field>
+              <Field label="Role"><input className="fi" placeholder="e.g. Product Manager" value={form.role} onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}/></Field>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 <Field label="Date Applied"><input className="fi" type="date" value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}/></Field>
                 <Field label="Status">
@@ -332,11 +370,11 @@ export default function JobTracker() {
               <Field label="Notes"><textarea className="fi" rows={3} placeholder="Contacts, impressions, next steps..." value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} style={{ resize: "vertical" }}/></Field>
               <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
                 <button className="btn" onClick={submit}
-                  style={{ flex: 1, padding: "11px", background: "linear-gradient(135deg, #6366f1, #8b5cf6)", color: "#fff", borderRadius: 9, fontSize: 14, fontWeight: 600, boxShadow: "0 2px 8px rgba(99,102,241,0.3)" }}>
+                  style={{ flex: 1, padding: "11px", background: "#ea6c1a", color: "#fff", borderRadius: 9, fontSize: 14, fontWeight: 700, boxShadow: "0 2px 8px rgba(234,108,26,0.3)" }}>
                   {editId ? "Save Changes" : "Add Application"}
                 </button>
                 <button className="btn" onClick={() => { setShowForm(false); setEditId(null); }}
-                  style={{ padding: "11px 18px", background: "#f1f5f9", color: "#64748b", borderRadius: 9, fontSize: 14, fontWeight: 500 }}>Cancel</button>
+                  style={{ padding: "11px 18px", background: "#f4f4f0", color: "#6b7280", borderRadius: 9, fontSize: 14, fontWeight: 500 }}>Cancel</button>
               </div>
             </div>
           </div>
@@ -347,11 +385,11 @@ export default function JobTracker() {
       {toast && (
         <div className="toast" style={{
           position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
-          background: toast.type === "err" ? "#fef2f2" : "#ecfdf5",
-          color: toast.type === "err" ? "#dc2626" : "#059669",
-          border: "1.5px solid " + (toast.type === "err" ? "#fecaca" : "#a7f3d0"),
+          background: toast.type === "err" ? "#fef2f2" : "#f0fdf4",
+          color: toast.type === "err" ? "#dc2626" : "#16a34a",
+          border: "1.5px solid " + (toast.type === "err" ? "#fecaca" : "#86efac"),
           padding: "10px 22px", borderRadius: 10, fontSize: 13.5, zIndex: 200, whiteSpace: "nowrap",
-          fontWeight: 500, boxShadow: "0 4px 20px rgba(0,0,0,0.1)"
+          fontWeight: 600, boxShadow: "0 4px 20px rgba(0,0,0,0.08)"
         }}>{toast.msg}</div>
       )}
     </div>
@@ -361,7 +399,7 @@ export default function JobTracker() {
 function Field({ label, children }) {
   return (
     <div>
-      <label style={{ fontSize: 11.5, color: "#64748b", display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: ".07em", fontWeight: 600 }}>{label}</label>
+      <label style={{ fontSize: 11.5, color: "#9ca3af", display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: ".07em", fontWeight: 700 }}>{label}</label>
       {children}
     </div>
   );
@@ -369,8 +407,8 @@ function Field({ label, children }) {
 
 function Check({ label, checked, onChange }) {
   return (
-    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13.5, color: "#475569", cursor: "pointer", fontWeight: 400 }}>
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} style={{ accentColor: "#6366f1", width: 15, height: 15 }}/>
+    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13.5, color: "#6b7280", cursor: "pointer" }}>
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} style={{ accentColor: "#ea6c1a", width: 15, height: 15 }}/>
       {label}
     </label>
   );
