@@ -8,6 +8,9 @@ const HEADERS = {
   "Authorization": "Bearer " + SUPABASE_ANON
 };
 const DB = SUPABASE_URL + "/rest/v1/applications";
+const OFFERS_DB = SUPABASE_URL + "/rest/v1/job_offers";
+const CV_PROFILE_DB = SUPABASE_URL + "/rest/v1/cv_profile";
+const FUNCTIONS_BASE = SUPABASE_URL + "/functions/v1";
 
 const toRow = (a) => ({
   company: a.company, role: a.role, status: a.status, date: a.date,
@@ -53,6 +56,41 @@ const EMPTY = {
   cvLink: "", coverLetterLink: "", notes: "",
 };
 
+async function offersFetch() {
+  const res = await fetch(OFFERS_DB + "?order=received_at.desc", { headers: HEADERS });
+  return res.json();
+}
+async function cvProfileFetch() {
+  const res = await fetch(CV_PROFILE_DB + "?id=eq.1", { headers: HEADERS });
+  const data = await res.json();
+  return data[0] || { instructions: "", base_resume: "" };
+}
+async function cvProfileSave(profile) {
+  await fetch(CV_PROFILE_DB + "?id=eq.1", {
+    method: "PATCH",
+    headers: HEADERS,
+    body: JSON.stringify({ instructions: profile.instructions, base_resume: profile.base_resume }),
+  });
+}
+async function callFn(name, { method = "POST", adminToken, body } = {}) {
+  const headers = { "Content-Type": "application/json" };
+  if (adminToken) headers["x-admin-token"] = adminToken;
+  const res = await fetch(FUNCTIONS_BASE + "/" + name, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.ok === false) throw new Error(data.error || "Request failed");
+  return data;
+}
+async function offerAction(id, action, adminToken) {
+  const url = FUNCTIONS_BASE + "/offer-action?id=" + id + "&action=" + action;
+  const res = await fetch(url, { headers: { "x-admin-token": adminToken } });
+  if (!res.ok) throw new Error("Action failed (" + res.status + ")");
+  return res.text();
+}
+
 async function parseWithAI(raw) {
   const today = new Date().toISOString().slice(0, 10);
   const prompt = "Extract job application info from this text and return ONLY a valid JSON object (no markdown, no explanation).\nText: \"" + raw + "\"\nReturn this exact shape:\n{\"company\":\"Company name or empty string\",\"role\":\"Job title or empty string\",\"date\":\"YYYY-MM-DD use today (" + today + ") if not specified\",\"cvSent\":true,\"coverLetterSent\":false,\"cvLink\":\"URL if mentioned else empty string\",\"coverLetterLink\":\"URL if mentioned else empty string\",\"notes\":\"Any extra info\"}";
@@ -67,6 +105,7 @@ async function parseWithAI(raw) {
 }
 
 export default function JobTracker() {
+  const [tab, setTab] = useState("applications");
   const [apps, setApps] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -210,6 +249,17 @@ export default function JobTracker() {
         />
       </div>
 
+      {/* Tab nav */}
+      <div style={{ background: "#fff", borderBottom: "1.5px solid #e8e4dc", padding: "0 32px", display: "flex", gap: 4 }}>
+        {[["applications", "Applications"], ["offers", "Job Offers Inbox"]].map(([key, label]) => (
+          <div key={key} onClick={() => setTab(key)}
+            style={{ padding: "13px 6px", marginRight: 18, fontSize: 13.5, fontWeight: 600, cursor: "pointer", color: tab === key ? "#ea6c1a" : "#9ca3af", borderBottom: "2.5px solid " + (tab === key ? "#ea6c1a" : "transparent") }}>
+            {label}
+          </div>
+        ))}
+      </div>
+
+      {tab === "applications" && <>
       {/* Sub-header */}
       <div style={{ background: "#fff", borderBottom: "1.5px solid #e8e4dc", padding: "0 32px", display: "flex", alignItems: "center", justifyContent: "space-between", height: 56 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -380,6 +430,9 @@ export default function JobTracker() {
           </div>
         </div>
       )}
+      </>}
+
+      {tab === "offers" && <OffersPanel showToast={showToast} />}
 
       {/* Toast */}
       {toast && (
@@ -411,5 +464,206 @@ function Check({ label, checked, onChange }) {
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} style={{ accentColor: "#ea6c1a", width: 15, height: 15 }}/>
       {label}
     </label>
+  );
+}
+
+const OFFER_STATUS = {
+  new:                 { label: "New",                  color: "#6b7280", bg: "#f4f4f0" },
+  digested:            { label: "In digest",             color: "#9a3412", bg: "#ffedd5" },
+  approved:            { label: "Approved",              color: "#15803d", bg: "#f0fdf4" },
+  rejected:            { label: "Rejected",              color: "#9ca3af", bg: "#f9fafb" },
+  cv_generated:        { label: "CV generated",          color: "#1d4ed8", bg: "#eff6ff" },
+  drafted:             { label: "Draft ready in Gmail",  color: "#15803d", bg: "#f0fdf4" },
+  manual_apply_needed: { label: "Needs manual apply",    color: "#b45309", bg: "#fffbeb" },
+  applied:             { label: "Applied",               color: "#15803d", bg: "#f0fdf4" },
+};
+
+function OffersPanel({ showToast }) {
+  const [offers, setOffers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState("");
+  const [expandedId, setExpandedId] = useState(null);
+  const [adminToken, setAdminToken] = useState(() => localStorage.getItem("jobAgentAdminToken") || "");
+  const [showSettings, setShowSettings] = useState(false);
+  const [profile, setProfile] = useState({ instructions: "", base_resume: "" });
+  const [profileLoaded, setProfileLoaded] = useState(false);
+
+  const load = () => {
+    setLoading(true);
+    offersFetch().then((data) => { setOffers(data); setLoading(false); })
+      .catch(() => { showToast("Could not load job offers", "err"); setLoading(false); });
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const saveToken = (v) => {
+    setAdminToken(v);
+    localStorage.setItem("jobAgentAdminToken", v);
+  };
+
+  const openSettings = () => {
+    if (!profileLoaded) {
+      cvProfileFetch().then((p) => { setProfile(p); setProfileLoaded(true); });
+    }
+    setShowSettings(true);
+  };
+
+  const saveProfile = async () => {
+    try {
+      await cvProfileSave(profile);
+      showToast("CV profile saved");
+      setShowSettings(false);
+    } catch {
+      showToast("Could not save CV profile", "err");
+    }
+  };
+
+  const runScan = async () => {
+    setBusy("scan");
+    try {
+      const r = await callFn("scan-gmail", { adminToken });
+      showToast("Scanned inbox — " + r.inserted + " new offer(s) found");
+      load();
+    } catch (e) {
+      showToast(e.message || "Scan failed", "err");
+    }
+    setBusy("");
+  };
+
+  const runDigest = async () => {
+    setBusy("digest");
+    try {
+      const r = await callFn("send-digest", { adminToken });
+      showToast(r.sent ? "Digest emailed (" + r.count + " offers)" : "No new offers to send");
+      load();
+    } catch (e) {
+      showToast(e.message || "Sending digest failed", "err");
+    }
+    setBusy("");
+  };
+
+  const act = async (id, action) => {
+    setBusy(id + action);
+    try {
+      await offerAction(id, action, adminToken);
+      showToast(action === "approve" ? "Approved — generating CV..." : "Rejected");
+      load();
+    } catch (e) {
+      showToast(e.message || "Action failed", "err");
+    }
+    setBusy("");
+  };
+
+  const counts = offers.reduce((m, o) => { m[o.status] = (m[o.status] || 0) + 1; return m; }, {});
+
+  return (
+    <div style={{ padding: "16px 32px 48px" }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 16 }}>
+        <button className="btn" onClick={runScan} disabled={busy === "scan"}
+          style={{ padding: "9px 18px", background: "#ea6c1a", color: "#fff", borderRadius: 8, fontSize: 13.5, fontWeight: 600 }}>
+          {busy === "scan" ? "Scanning..." : "Scan Gmail now"}
+        </button>
+        <button className="btn" onClick={runDigest} disabled={busy === "digest"}
+          style={{ padding: "9px 18px", background: "#fef6ee", color: "#ea6c1a", border: "1px solid #fde8d0", borderRadius: 8, fontSize: 13.5, fontWeight: 600 }}>
+          {busy === "digest" ? "Sending..." : "Email me a digest"}
+        </button>
+        <button className="btn" onClick={openSettings}
+          style={{ padding: "9px 18px", background: "#f4f4f0", color: "#6b7280", borderRadius: 8, fontSize: 13.5, fontWeight: 600 }}>
+          CV profile & admin token
+        </button>
+        <div style={{ fontSize: 12, color: "#9ca3af", marginLeft: "auto" }}>
+          {offers.length} offer{offers.length !== 1 ? "s" : ""}
+          {Object.entries(counts).map(([k, c]) => " · " + (OFFER_STATUS[k]?.label || k) + " " + c).join("")}
+        </div>
+      </div>
+
+      {!adminToken && (
+        <div style={{ background: "#fffbeb", border: "1.5px solid #fcd34d", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#b45309", marginBottom: 16 }}>
+          No admin token set — Scan/Digest/Approve/Reject will only work if the ADMIN_TOKEN secret is unset on the backend. Set one in "CV profile & admin token" once you configure ADMIN_TOKEN in Supabase.
+        </div>
+      )}
+
+      {loading && <div className="pulse" style={{ textAlign: "center", padding: "56px 0", color: "#c4bfb8", fontSize: 14 }}>Loading offers...</div>}
+      {!loading && offers.length === 0 && (
+        <div style={{ textAlign: "center", padding: "64px 0", color: "#9ca3af", fontSize: 14 }}>
+          No offers yet — connect Gmail (see SETUP.md), then click "Scan Gmail now".
+        </div>
+      )}
+
+      {offers.map((o) => {
+        const cfg = OFFER_STATUS[o.status] || OFFER_STATUS.new;
+        const isOpen = expandedId === o.id;
+        const actionable = o.status === "new" || o.status === "digested";
+        return (
+          <div key={o.id} className="row" style={{ background: isOpen ? "#fff" : "transparent", padding: "0 16px", boxShadow: isOpen ? "0 2px 16px rgba(0,0,0,0.07)" : "none" }}>
+            <div onClick={() => setExpandedId(isOpen ? null : o.id)}
+              style={{ display: "grid", gridTemplateColumns: "1fr auto auto", alignItems: "center", gap: 12, padding: "13px 0", cursor: "pointer" }}>
+              <div>
+                <div style={{ fontSize: 14.5, fontWeight: 600 }}>{o.company || "(unknown)"} {o.role ? "— " + o.role : ""}</div>
+                <div style={{ fontSize: 12.5, color: "#9ca3af", marginTop: 2 }}>{o.subject}</div>
+              </div>
+              <div style={{ padding: "4px 11px", borderRadius: 20, background: cfg.bg, color: cfg.color, fontSize: 11.5, fontWeight: 700, whiteSpace: "nowrap" }}>{cfg.label}</div>
+              {actionable ? (
+                <div style={{ display: "flex", gap: 6 }} onClick={(e) => e.stopPropagation()}>
+                  <button className="btn" disabled={busy === o.id + "approve"} onClick={() => act(o.id, "approve")}
+                    style={{ padding: "6px 14px", background: "#16a34a", color: "#fff", borderRadius: 7, fontSize: 12.5, fontWeight: 600 }}>Approve</button>
+                  <button className="btn" disabled={busy === o.id + "reject"} onClick={() => act(o.id, "reject")}
+                    style={{ padding: "6px 14px", background: "#f4f4f0", color: "#6b7280", borderRadius: 7, fontSize: 12.5, fontWeight: 600 }}>Reject</button>
+                </div>
+              ) : <div />}
+            </div>
+            {isOpen && (
+              <div className="fade" style={{ paddingBottom: 16, borderTop: "1px solid #f0ede8", paddingTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ fontSize: 13, color: "#6b7280" }}>{o.snippet}</div>
+                {(o.apply_links || []).length > 0 && (
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {o.apply_links.map((l, i) => (
+                      <a key={i} href={l} target="_blank" rel="noreferrer" style={{ fontSize: 12.5, color: "#ea6c1a", background: "#fef6ee", padding: "5px 12px", borderRadius: 7, textDecoration: "none", fontWeight: 600, border: "1px solid #fde8d0" }}>Apply link {i + 1} &#8599;</a>
+                    ))}
+                  </div>
+                )}
+                {o.apply_email && <div style={{ fontSize: 12.5, color: "#9ca3af" }}>Apply email detected: {o.apply_email}</div>}
+                {o.generated_cover_note && (
+                  <div style={{ background: "#f9f8f6", border: "1.5px solid #e8e4dc", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#1c1c1c", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
+                    <div style={{ fontSize: 10.5, color: "#c4bfb8", marginBottom: 5, textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 700 }}>Cover note</div>
+                    {o.generated_cover_note}
+                  </div>
+                )}
+                {o.generated_cv && (
+                  <div style={{ background: "#f9f8f6", border: "1.5px solid #e8e4dc", borderRadius: 8, padding: "10px 14px", fontSize: 12.5, color: "#1c1c1c", lineHeight: 1.6, whiteSpace: "pre-wrap", maxHeight: 300, overflowY: "auto" }}>
+                    <div style={{ fontSize: 10.5, color: "#c4bfb8", marginBottom: 5, textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 700 }}>Generated CV</div>
+                    {o.generated_cv}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {showSettings && (
+        <div onClick={(e) => { if (e.target === e.currentTarget) setShowSettings(false); }}
+          style={{ position: "fixed", inset: 0, background: "rgba(28,28,28,0.35)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 16, backdropFilter: "blur(4px)" }}>
+          <div className="fade" style={{ background: "#fff", border: "1.5px solid #e8e4dc", borderRadius: 14, padding: 28, width: "100%", maxWidth: 560, maxHeight: "90vh", overflowY: "auto" }}>
+            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 20, fontWeight: 800, marginBottom: 16 }}>CV profile & admin token</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <Field label="Admin token (matches ADMIN_TOKEN secret in Supabase)">
+                <input className="fi" type="password" value={adminToken} onChange={(e) => saveToken(e.target.value)} placeholder="paste the same value you set as ADMIN_TOKEN"/>
+              </Field>
+              <Field label="CV project instructions (paste your Claude 'CV creation' project instructions here)">
+                <textarea className="fi" rows={6} value={profile.instructions} onChange={(e) => setProfile((p) => ({ ...p, instructions: e.target.value }))} style={{ resize: "vertical" }}/>
+              </Field>
+              <Field label="Base resume / CV content">
+                <textarea className="fi" rows={10} value={profile.base_resume} onChange={(e) => setProfile((p) => ({ ...p, base_resume: e.target.value }))} style={{ resize: "vertical" }}/>
+              </Field>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button className="btn" onClick={saveProfile} style={{ flex: 1, padding: "11px", background: "#ea6c1a", color: "#fff", borderRadius: 9, fontSize: 14, fontWeight: 700 }}>Save</button>
+                <button className="btn" onClick={() => setShowSettings(false)} style={{ padding: "11px 18px", background: "#f4f4f0", color: "#6b7280", borderRadius: 9, fontSize: 14 }}>Close</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

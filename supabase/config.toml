@@ -1,0 +1,23 @@
+project_id = "job-tracker"
+
+# These functions are hit by unauthenticated GET (Google's OAuth redirect, or a click
+# from inside an email) so they can't require a Supabase JWT.
+[functions.gmail-oauth-start]
+verify_jwt = false
+
+[functions.gmail-oauth-callback]
+verify_jwt = false
+
+[functions.offer-action]
+verify_jwt = false
+
+# Called from the app's frontend with the anon key, or from a schedule/cron — fine to
+# require the anon JWT like normal REST calls.
+[functions.scan-gmail]
+verify_jwt = false
+
+[functions.send-digest]
+verify_jwt = false
+
+[functions.generate-cv]
+verify_jwt = false
